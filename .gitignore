@@ -1,4 +1,8 @@
 # Byte-compiled / optimized / DLL files
+./data/kitti
+data/
+pretrained/
+
 __pycache__/
 *.py[cod]
 *$py.class
@@ -105,3 +109,4 @@ venv.bak/
 
 .idea
 .vscode
+results/

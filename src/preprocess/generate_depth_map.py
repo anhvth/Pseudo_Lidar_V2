@@ -35,9 +35,9 @@ if __name__ == '__main__':
     image_dir = args.data_path + '/image_2/'
     depth_dir = args.data_path + '/depth_map/'
 
-    assert os.path.isdir(lidar_dir)
-    assert os.path.isdir(calib_dir)
-    assert os.path.isdir(image_dir)
+    assert os.path.isdir(lidar_dir), lidar_dir
+    assert os.path.isdir(calib_dir), calib_dir
+    assert os.path.isdir(image_dir), image_dir
 
     if not os.path.isdir(depth_dir):
         os.makedirs(depth_dir)
