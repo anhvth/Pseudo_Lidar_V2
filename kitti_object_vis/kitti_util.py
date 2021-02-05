@@ -669,7 +669,7 @@ def compute_orientation_3d(obj, P):
     return orientation_2d, np.transpose(orientation_3d)
 
 
-def draw_projected_box3d(image, qs, color=(0, 255, 0), thickness=2):
+def (image, qs, color=(0, 255, 0), thickness=2):
     """ Draw 3d bounding box in image
         qs: (8,3) array of vertices for the 3d box in following order:
             1 -------- 0
