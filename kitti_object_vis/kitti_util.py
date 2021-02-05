@@ -143,15 +143,13 @@ class Calibration(object):
         TODO(rqi): do matrix multiplication only once for each projection.
     """
 
-    def __init__(self, calib_filepath, from_video=False, camera_name='P1'):
+    def __init__(self, calib_filepath, from_video=False):
         if from_video:
             calibs = self.read_calib_from_video(calib_filepath)
         else:
             calibs = self.read_calib_file(calib_filepath)
-        self.calibs = calibs
         # Projection matrix from rect camera coord to image2 coord
-        assert camera_name in calibs, "not in calibs??: {}".format(calibs.keys())
-        self.P = calibs[camera_name]
+        self.P = calibs["P2"]
         self.P = np.reshape(self.P, [3, 4])
         # Rigid transform from Velodyne coord to reference camera coord
         self.V2C = calibs["Tr_velo_to_cam"]
@@ -593,7 +591,6 @@ def project_to_image(pts_3d, P):
     """
     n = pts_3d.shape[0]
     pts_3d_extend = np.hstack((pts_3d, np.ones((n, 1))))
-#     import ipdb; ipdb.set_trace()
     # print(('pts_3d_extend shape: ', pts_3d_extend.shape))
     pts_2d = np.dot(pts_3d_extend, np.transpose(P))  # nx3
     pts_2d[:, 0] /= pts_2d[:, 2]
@@ -669,7 +666,7 @@ def compute_orientation_3d(obj, P):
     return orientation_2d, np.transpose(orientation_3d)
 
 
-def (image, qs, color=(0, 255, 0), thickness=2):
+def draw_projected_box3d(image, qs, color=(0, 255, 0), thickness=2):
     """ Draw 3d bounding box in image
         qs: (8,3) array of vertices for the 3d box in following order:
             1 -------- 0

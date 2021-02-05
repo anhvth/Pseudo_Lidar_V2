@@ -27,33 +27,31 @@ cbox = np.array([[0, 70.4], [-40, 40], [-3, 1]])
 class kitti_object(object):
     """Load and parse object data into a usable format."""
 
-    def __init__(self, root_dir, split="training", args=None, img_ext='png',
-            lidar_dir = "velodyne",
-            depth_dir = "depth",
-            pred_dir = "pred", cam_id=2):
+    def __init__(self, root_dir, split="training", args=None):
         """root_dir contains training and testing folders"""
-        self.img_ext = img_ext
         self.root_dir = root_dir
         self.split = split
         print(root_dir, split)
         self.split_dir = os.path.join(root_dir, split)
 
-        # if split == "training":
-        #     self.num_samples = 7481
-        # elif split == "testing":
-        #     self.num_samples = 7518
-        # else:
-        #     print("Unknown split: %s" % (split))
-        #     exit(-1)
+        if split == "training":
+            self.num_samples = 7481
+        elif split == "testing":
+            self.num_samples = 7518
+        else:
+            print("Unknown split: %s" % (split))
+            exit(-1)
 
-
+        lidar_dir = "velodyne"
+        depth_dir = "depth"
+        pred_dir = "pred"
         if args is not None:
             lidar_dir = args.lidar
             depth_dir = args.depthdir
             pred_dir = args.preddir
 
-        self.image_dir = os.path.join(self.split_dir, f"image_{cam_id}")
-        self.label_dir = os.path.join(self.split_dir, f"label_{cam_id}")
+        self.image_dir = os.path.join(self.split_dir, "image_2")
+        self.label_dir = os.path.join(self.split_dir, "label_2")
         self.calib_dir = os.path.join(self.split_dir, "calib")
 
         self.depthpc_dir = os.path.join(self.split_dir, "depth_pc")
@@ -66,29 +64,28 @@ class kitti_object(object):
 
     def get_image(self, idx):
         assert idx < self.num_samples
-        img_filename = os.path.join(self.image_dir, f"%07d.{self.img_ext}" % (idx))
-        assert os.path.exists(img_filename),img_filename
+        img_filename = os.path.join(self.image_dir, "%06d.png" % (idx))
         return utils.load_image(img_filename)
 
     def get_lidar(self, idx, dtype=np.float32, n_vec=4):
         assert idx < self.num_samples
-        lidar_filename = os.path.join(self.lidar_dir, "%07d.bin" % (idx))
+        lidar_filename = os.path.join(self.lidar_dir, "%06d.bin" % (idx))
         print(lidar_filename)
         return utils.load_velo_scan(lidar_filename, dtype, n_vec)
 
     def get_calibration(self, idx):
         assert idx < self.num_samples
-        calib_filename = os.path.join(self.calib_dir, "%07d.txt" % (idx))
+        calib_filename = os.path.join(self.calib_dir, "%06d.txt" % (idx))
         return utils.Calibration(calib_filename)
 
     def get_label_objects(self, idx):
-#         assert idx < self.num_samples and self.split == "training"
-        label_filename = os.path.join(self.label_dir, "%07d.txt" % (idx))
+        assert idx < self.num_samples and self.split == "training"
+        label_filename = os.path.join(self.label_dir, "%06d.txt" % (idx))
         return utils.read_label(label_filename)
 
     def get_pred_objects(self, idx):
         assert idx < self.num_samples
-        pred_filename = os.path.join(self.pred_dir, "%07d.txt" % (idx))
+        pred_filename = os.path.join(self.pred_dir, "%06d.txt" % (idx))
         is_exist = os.path.exists(pred_filename)
         if is_exist:
             return utils.read_label(pred_filename)
@@ -97,17 +94,17 @@ class kitti_object(object):
 
     def get_depth(self, idx):
         assert idx < self.num_samples
-        img_filename = os.path.join(self.depth_dir, f"%07d.png" % (idx))
+        img_filename = os.path.join(self.depth_dir, "%06d.png" % (idx))
         return utils.load_depth(img_filename)
 
     def get_depth_image(self, idx):
         assert idx < self.num_samples
-        img_filename = os.path.join(self.depth_dir, f"%07d.png" % (idx))
+        img_filename = os.path.join(self.depth_dir, "%06d.png" % (idx))
         return utils.load_depth(img_filename)
 
     def get_depth_pc(self, idx):
         assert idx < self.num_samples
-        lidar_filename = os.path.join(self.depthpc_dir, "%07d.bin" % (idx))
+        lidar_filename = os.path.join(self.depthpc_dir, "%06d.bin" % (idx))
         is_exist = os.path.exists(lidar_filename)
         if is_exist:
             return utils.load_velo_scan(lidar_filename), is_exist
@@ -121,14 +118,13 @@ class kitti_object(object):
 
     def isexist_pred_objects(self, idx):
         assert idx < self.num_samples and self.split == "training"
-        pred_filename = os.path.join(self.pred_dir, "%07d.txt" % (idx))
+        pred_filename = os.path.join(self.pred_dir, "%06d.txt" % (idx))
         return os.path.exists(pred_filename)
 
     def isexist_depth(self, idx):
         assert idx < self.num_samples and self.split == "training"
-        depth_filename = os.path.join(self.depth_dir, "%07d.txt" % (idx))
+        depth_filename = os.path.join(self.depth_dir, "%06d.txt" % (idx))
         return os.path.exists(depth_filename)
-
 
 
 class kitti_object_video(object):
@@ -220,7 +216,6 @@ def show_image_with_boxes(img, objects, calib, show3d=True, depth=None):
             2,
         )
         box3d_pts_2d, _ = utils.compute_box_3d(obj, calib.P)
-        if box3d_pts_2d is None: continue
         if obj.type == "Car":
             img2 = utils.draw_projected_box3d(img2, box3d_pts_2d, color=(0, 255, 0))
         elif obj.type == "Pedestrian":
@@ -416,7 +411,7 @@ def show_lidar_with_depth(
         if save:
             data_idx = 0
             vely_dir = "data/object/training/depth_pc"
-            save_filename = os.path.join(vely_dir, "%07d.bin" % (data_idx))
+            save_filename = os.path.join(vely_dir, "%06d.bin" % (data_idx))
             print(save_filename)
             # np.save(save_filename+".npy", np.array(depth_pc_velo))
             depth_pc_velo = depth_pc_velo.astype(np.float32)
@@ -503,7 +498,7 @@ def save_depth0(
         print("depth_pc:", depth_pc.shape)
 
     vely_dir = "data/object/training/depth_pc"
-    save_filename = os.path.join(vely_dir, "%07d.bin" % (data_idx))
+    save_filename = os.path.join(vely_dir, "%06d.bin" % (data_idx))
 
     depth_pc = depth_pc.astype(np.float32)
     depth_pc.tofile(save_filename)
@@ -529,7 +524,7 @@ def save_depth(
         print("depth_pc:", depth_pc.shape)
 
     vely_dir = "data/object/training/depth_pc"
-    save_filename = os.path.join(vely_dir, "%07d.bin" % (data_idx))
+    save_filename = os.path.join(vely_dir, "%06d.bin" % (data_idx))
 
     depth_pc = depth_pc.astype(np.float32)
     depth_pc.tofile(save_filename)
@@ -981,7 +976,6 @@ if __name__ == "__main__":
         assert os.path.exists(args.dir + "/" + args.split + "/pred")
 
     if args.vis:
-        import ipdb; ipdb.set_trace()
         dataset_viz(args.dir, args)
     if args.gen_depth:
         depth_to_lidar_format(args.dir, args)
