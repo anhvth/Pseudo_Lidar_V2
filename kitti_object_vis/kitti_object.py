@@ -90,6 +90,7 @@ class kitti_object(object):
         if is_exist:
             return utils.read_label(pred_filename)
         else:
+            print(f'{pred_filename} does not exist')
             return None
 
     def get_depth(self, idx):
