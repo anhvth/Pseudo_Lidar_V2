@@ -32,6 +32,7 @@ class WaymoObject(object):
                  depth_dir="depth",
                  pred_dir="pred",
                  index_format = "%06d",
+                 image_ext="jpg",
                  args=None):
         """root_dir contains training and testing folders"""
         self.root_dir = root_dir
@@ -51,13 +52,14 @@ class WaymoObject(object):
         self.lidar_dir = os.path.join(self.root_dir, lidar_dir)
         self.depth_dir = os.path.join(self.root_dir, depth_dir)
         self.pred_dir = os.path.join(self.root_dir, pred_dir)
+        self.image_ext = image_ext
 
     def __len__(self):
         return self.num_samples
 
     def get_image(self, idx):
         # assert idx < self.num_samples
-        img_filename = os.path.join(self.image_dir, f"{self.index_format}.jpg" % (idx))
+        img_filename = os.path.join(self.image_dir, f"{self.index_format}.{self.image_ext}" % (idx))
         assert os.path.exists(img_filename), img_filename
         return utils.load_image(img_filename)
 
