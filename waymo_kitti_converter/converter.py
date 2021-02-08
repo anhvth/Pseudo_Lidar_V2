@@ -430,7 +430,6 @@ class WaymoToKITTI(object):
         Pose is important for algorithms that takes advantage of the temporal information
 
         """
-
         pose_path = join(self.pose_save_dir, self.prefix + str(file_idx).zfill(3) + str(frame_idx).zfill(3) + '.txt')
         if self.check_file_exists(pose_path):
             return

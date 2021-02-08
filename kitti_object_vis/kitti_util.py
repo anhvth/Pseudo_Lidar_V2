@@ -143,13 +143,15 @@ class Calibration(object):
         TODO(rqi): do matrix multiplication only once for each projection.
     """
 
-    def __init__(self, calib_filepath, from_video=False):
+    def __init__(self, calib_filepath, from_video=False, camera_name='P2'):
         if from_video:
             calibs = self.read_calib_from_video(calib_filepath)
         else:
             calibs = self.read_calib_file(calib_filepath)
         # Projection matrix from rect camera coord to image2 coord
-        self.P = calibs["P2"]
+        assert camera_name in calibs, calibs.keys()
+        self.P = calibs[camera_name]
+
         self.P = np.reshape(self.P, [3, 4])
         # Rigid transform from Velodyne coord to reference camera coord
         self.V2C = calibs["Tr_velo_to_cam"]
