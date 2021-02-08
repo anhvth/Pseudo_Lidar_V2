@@ -62,7 +62,7 @@ save_track_id = True
 
 class WaymoToKITTI(object):
 
-    def __init__(self, load_dir, save_dir, prefix, num_proc):
+    def __init__(self, load_dir, save_dir, prefix, num_proc, max_record=None):
         # turn on eager execution for older tensorflow versions
         if int(tf.__version__.split('.')[0]) < 2:
             tf.enable_eager_execution()
@@ -83,6 +83,8 @@ class WaymoToKITTI(object):
         self.num_proc = int(num_proc)
 
         self.tfrecord_pathnames = sorted(glob(join(self.load_dir, '*.tfrecord')))
+        if max_record is not None:
+            self.tfrecord_pathnames = self.tfrecord_pathnames[:max_record]
 
         self.label_save_dir       = self.save_dir + '/label_'
         self.label_all_save_dir   = self.save_dir + '/label_all'
@@ -120,17 +122,15 @@ class WaymoToKITTI(object):
             if selected_waymo_locations is not None and frame.context.stats.location not in selected_waymo_locations:
                 return
 
-            # save images
-            # self.save_image(frame, file_idx, frame_idx)
 
-            # parse calibration files
-            self.save_calib(frame, file_idx, frame_idx)
+            # parse label files
+            self.save_label_and_calib(frame, file_idx, frame_idx)
+            # save images
+            self.save_image(frame, file_idx, frame_idx)
 
             # parse point clouds
             # self.save_lidar(frame, file_idx, frame_idx)
 
-            # parse label files
-            # self.save_label(frame, file_idx, frame_idx)
 
             # parse pose files
             # self.save_pose(frame, file_idx, frame_idx)
@@ -157,6 +157,7 @@ class WaymoToKITTI(object):
                 img = cv2.imdecode(np.frombuffer(img.image, np.uint8), cv2.IMREAD_COLOR)
                 mmcv.imwrite(img, img_path)
 
+
     def save_calib(self, frame, file_idx, frame_idx):
         """ parse and save the calibration data
                 :param frame: open dataset frame proto
@@ -164,38 +165,68 @@ class WaymoToKITTI(object):
                 :param frame_idx: the current frame number
                 :return:
         """
+        # kitti:
+        #   bbox in reference camera frame (right-down-front)
+        #       image_x_coord = Px * R0_rect * R0_rot * bbox_coord
+        #   lidar points in lidar frame (front-right-up)
+        #       image_x_coord = Px * R0_rect * Tr_velo_to_cam * lidar_coord
+        #   note:   R0_rot is caused by bbox rotation
+        #           Tr_velo_to_cam projects lidar points to cam_0 frame
+        # waymo:
+        #   bbox in vehicle frame, hence, use a virtual reference frame
+        #   since waymo camera uses frame front-left-up, the virtual reference frame (right-down-front) is
+        #   built on a transformed front camera frame, name this transform T_front_cam_to_ref
+        #   and there is no rectified camera frame
+        #       image_x_coord = intrinsics_x * Tr_front_cam_to_cam_x * inv(T_front_cam_to_ref) * R0_rot * bbox_coord(now in ref frame)
+        #   lidar points in vehicle frame
+        #       image_x_coord = intrinsics_x * Tr_front_cam_to_cam_x * inv(T_front_cam_to_ref) * T_front_cam_to_ref * Tr_velo_to_front_cam * lidar_coord
+        # hence, waymo -> kitti:
+        #   set Tr_velo_to_cam = T_front_cam_to_ref * Tr_vehicle_to_front_cam = T_front_cam_to_ref * inv(Tr_front_cam_to_vehicle)
+        #       as vehicle and lidar use the same frame after fusion
+        #   set R0_rect = identity
+        #   set P2 = front_cam_intrinsics * Tr_waymo_to_conv * Tr_front_cam_to_front_cam * inv(T_front_cam_to_ref)
+        #   note: front cam is cam_0 in kitti, whereas has name = 1 in waymo
+        #   note: waymo camera has a front-left-up frame,
+        #       instead of the conventional right-down-front frame
+        #       Tr_waymo_to_conv is used to offset this difference. However, Tr_waymo_to_conv is the same as
+        #       T_front_cam_to_ref, hence,
+        #   set P2 = front_cam_intrinsics
 
         calib_context = ''
 
-
+        # front-left-up -> right-down-front
+        # T_front_cam_to_ref = np.array([
+        #     [0.0, -1.0, 0.0],
+        #     [-1.0, 0.0, 0.0],
+        #     [0.0, 0.0, 1.0]
+        # ])
         T_front_cam_to_ref = np.array([
             [0.0, -1.0, 0.0],
             [0.0, 0.0, -1.0],
             [1.0, 0.0, 0.0]
         ])
+        # T_ref_to_front_cam = np.array([
+        #     [0.0, 0.0, 1.0],
+        #     [-1.0, 0.0, 0.0],
+        #     [0.0, -1.0, 0.0]
+        # ])
 
         # print('context\n',frame.context)
-        cameras = frame.context.camera_calibrations
-        # import ipdb; ipdb.set_trace()
-        front_cam_intrinsic_dict = dict()
-        T_vehicle_to_front_cam = None
-        T_front_cam_to_vehicle = None
-        for camera in cameras:
-            # if camera.name == 1:  # FRONT = 1, see dataset.proto for details
-            T_cam_to_vehicle = np.array(camera.extrinsic.transform).reshape(4, 4)
-            # print('T_front_cam_to_vehicle\n', T_front_cam_to_vehicle)
-            T_vehicle_to_cam = np.linalg.inv(T_cam_to_vehicle)
-            if camera.name == 1:
-                T_vehicle_to_front_cam = T_vehicle_to_cam
-                T_front_cam_to_vehicle = T_cam_to_vehicle
-            cam_intrinsic = np.zeros((3, 4))
-            cam_intrinsic[0, 0] = camera.intrinsic[0]
-            cam_intrinsic[1, 1] = camera.intrinsic[1]
-            cam_intrinsic[0, 2] = camera.intrinsic[2]
-            cam_intrinsic[1, 2] = camera.intrinsic[3]
-            cam_intrinsic[2, 2] = 1
-            front_cam_intrinsic_dict[camera.name] = cam_intrinsic
-                # break
+
+        for camera in frame.context.camera_calibrations:
+            if camera.name == 1:  # FRONT = 1, see dataset.proto for details
+                T_front_cam_to_vehicle = np.array(camera.extrinsic.transform).reshape(4, 4)
+                # print('T_front_cam_to_vehicle\n', T_front_cam_to_vehicle)
+                T_vehicle_to_front_cam = np.linalg.inv(T_front_cam_to_vehicle)
+
+                front_cam_intrinsic = np.zeros((3, 4))
+                front_cam_intrinsic[0, 0] = camera.intrinsic[0]
+                front_cam_intrinsic[1, 1] = camera.intrinsic[1]
+                front_cam_intrinsic[0, 2] = camera.intrinsic[2]
+                front_cam_intrinsic[1, 2] = camera.intrinsic[3]
+                front_cam_intrinsic[2, 2] = 1
+
+                break
 
         # print('front_cam_intrinsic\n', front_cam_intrinsic)
 
@@ -205,18 +236,91 @@ class WaymoToKITTI(object):
         identity_3x4 = np.eye(4)[:3, :]
 
         # although waymo has 5 cameras, for compatibility, we produces 4 P
-        for camera_name, cam_intrinsic in front_cam_intrinsic_dict.items():
-            P = cam_intrinsic.reshape(12)
-            calib_context += f"P{camera_name}: " + " ".join(['{}'.format(i) for i in P]) + '\n'
+        for i in range(4):
+            if i == 2:
+                # note: front camera is labeled camera 2 (kitti) or camera 0 (waymo)
+                #   other Px are given dummy values. this is to ensure compatibility. They are seldom used anyway.
+                # tmp = cart_to_homo(np.linalg.inv(T_front_cam_to_ref))
+                # print(front_cam_intrinsic.shape, tmp.shape)
+                # P2 = np.matmul(front_cam_intrinsic, tmp).reshape(12)
+                P2 = front_cam_intrinsic.reshape(12)
+                calib_context += "P2: " + " ".join(['{}'.format(i) for i in P2]) + '\n'
+            else:
+                calib_context += "P" + str(i) + ": " + " ".join(['{}'.format(i) for i in identity_3x4.reshape(12)]) + '\n'
 
         calib_context += "R0_rect" + ": " + " ".join(['{}'.format(i) for i in np.eye(3).astype(np.float32).flatten()]) + '\n'
 
         Tr_velo_to_cam = self.cart_to_homo(T_front_cam_to_ref) @ np.linalg.inv(T_front_cam_to_vehicle)
+        # print('T_front_cam_to_vehicle\n', T_front_cam_to_vehicle)
+        # print('np.linalg.inv(T_front_cam_to_vehicle)\n', np.linalg.inv(T_front_cam_to_vehicle))
+        # print('cart_to_homo(T_front_cam_to_ref)\n', cart_to_homo(T_front_cam_to_ref))
+        # print('Tr_velo_to_cam\n',Tr_velo_to_cam)
         calib_context += "Tr_velo_to_cam" + ": " + " ".join(['{}'.format(i) for i in Tr_velo_to_cam[:3, :].reshape(12)]) + '\n'
-        calib_save_path = self.calib_save_dir + '/' + self.prefix + str(file_idx).zfill(3) + str(frame_idx).zfill(3) + '.txt'
-        if not self.check_file_exists(calib_save_path):
-            with open(calib_save_path, 'w+') as fp_calib:
+        save_path = self.calib_save_dir + '/' + self.prefix + str(file_idx).zfill(3) + str(frame_idx).zfill(3) + '.txt'
+        if not os.path.exists(save_path):
+            with open(save_path, 'w+') as fp_calib:
                 fp_calib.write(calib_context)
+
+    # def save_calib(self, frame, file_idx, frame_idx):
+    #     """ parse and save the calibration data
+    #             :param frame: open dataset frame proto
+    #             :param file_idx: the current file number
+    #             :param frame_idx: the current frame number
+    #             :return:
+    #     """
+
+    #     calib_context = ''
+
+
+    #     T_front_cam_to_ref = np.array([
+    #         [0.0, -1.0, 0.0],
+    #         [0.0, 0.0, -1.0],
+    #         [1.0, 0.0, 0.0]
+    #     ])
+
+    #     # print('context\n',frame.context)
+    #     cameras = frame.context.camera_calibrations
+    #     # import ipdb; ipdb.set_trace()
+    #     front_cam_intrinsic_dict = dict()
+    #     T_vehicle_to_front_cam = None
+    #     T_front_cam_to_vehicle = None
+    #     for camera in cameras:
+    #         # if camera.name == 1:  # FRONT = 1, see dataset.proto for details
+    #         T_cam_to_vehicle = np.array(camera.extrinsic.transform).reshape(4, 4)
+    #         # print('T_front_cam_to_vehicle\n', T_front_cam_to_vehicle)
+    #         T_vehicle_to_cam = np.linalg.inv(T_cam_to_vehicle)
+    #         if camera.name == 1:
+    #             T_vehicle_to_front_cam = T_vehicle_to_cam
+    #             T_front_cam_to_vehicle = T_cam_to_vehicle
+    #         cam_intrinsic = np.zeros((3, 4))
+    #         cam_intrinsic[0, 0] = camera.intrinsic[0]
+    #         cam_intrinsic[1, 1] = camera.intrinsic[1]
+    #         cam_intrinsic[0, 2] = camera.intrinsic[2]
+    #         cam_intrinsic[1, 2] = camera.intrinsic[3]
+    #         cam_intrinsic[2, 2] = 1
+    #         front_cam_intrinsic_dict[camera.name] = cam_intrinsic
+    #             # break
+
+    #     # print('front_cam_intrinsic\n', front_cam_intrinsic)
+
+    #     self.T_front_cam_to_ref = T_front_cam_to_ref.copy()
+    #     self.T_vehicle_to_front_cam = T_vehicle_to_front_cam.copy()
+
+    #     identity_3x4 = np.eye(4)[:3, :]
+
+    #     # although waymo has 5 cameras, for compatibility, we produces 4 P
+    #     for camera_name, cam_intrinsic in front_cam_intrinsic_dict.items():
+    #         P = cam_intrinsic.reshape(12)
+    #         calib_context += f"P{camera_name}: " + " ".join(['{}'.format(i) for i in P]) + '\n'
+
+    #     calib_context += "R0_rect" + ": " + " ".join(['{}'.format(i) for i in np.eye(3).astype(np.float32).flatten()]) + '\n'
+
+    #     Tr_velo_to_cam = self.cart_to_homo(T_front_cam_to_ref) @ np.linalg.inv(T_front_cam_to_vehicle)
+    #     calib_context += "Tr_velo_to_cam" + ": " + " ".join(['{}'.format(i) for i in Tr_velo_to_cam[:3, :].reshape(12)]) + '\n'
+    #     calib_save_path = self.calib_save_dir + '/' + self.prefix + str(file_idx).zfill(3) + str(frame_idx).zfill(3) + '.txt'
+    #     if not self.check_file_exists(calib_save_path):
+    #         with open(calib_save_path, 'w+') as fp_calib:
+    #             fp_calib.write(calib_context)
 
     def save_lidar(self, frame, file_idx, frame_idx):
         """ parse and save the lidar data in psd format
@@ -282,7 +386,7 @@ class WaymoToKITTI(object):
             # save
             point_cloud.astype(np.float32).tofile(pc_path)  # note: must save as float32, otherwise loading errors
 
-    def save_label(self, frame, file_idx, frame_idx):
+    def save_label_and_calib(self, frame, file_idx, frame_idx):
         """ parse and save the label data in .txt format
                 :param frame: open dataset frame proto
                 :param file_idx: the current file number
@@ -292,6 +396,9 @@ class WaymoToKITTI(object):
         label_path = self.label_all_save_dir + '/' + self.prefix + str(file_idx).zfill(3) + str(frame_idx).zfill(3) + '.txt'
         if self.check_file_exists(label_path):
             return
+
+        self.save_calib(frame, file_idx, frame_idx)
+
         fp_label_all = open(label_path, 'w+')
         # preprocess bounding box data
         id_to_bbox = dict()
@@ -588,7 +695,8 @@ if __name__ == '__main__':
     parser.add_argument('save_dir', help='Directory to save converted KITTI-format data')
     parser.add_argument('--prefix', default='', help='Prefix to be added to converted file names')
     parser.add_argument('--num_proc', default=1, help='Number of processes to spawn')
+    parser.add_argument('--max-record', default=None, type=int, help='Number of processes to spawn')
     args = parser.parse_args()
 
-    converter = WaymoToKITTI(args.load_dir, args.save_dir, args.prefix, args.num_proc)
+    converter = WaymoToKITTI(args.load_dir, args.save_dir, args.prefix, args.num_proc, args.max_record)
     converter.convert()

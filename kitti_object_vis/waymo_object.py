@@ -78,7 +78,7 @@ class kitti_object(object):
     def get_calibration(self, idx):
         assert idx < self.num_samples
         calib_filename = os.path.join(self.calib_dir, "%07d.txt" % (idx))
-        return utils.Calibration(calib_filename, camera_name=f'P{self.camera_name}')
+        return utils.Calibration(calib_filename, camera_name=f'P2')
 
     def get_label_objects(self, idx):
         assert idx < self.num_samples and self.split == "training"

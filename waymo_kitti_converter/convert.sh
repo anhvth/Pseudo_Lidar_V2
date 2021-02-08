@@ -1,1 +1,1 @@
-python converter.py /data/waymo/tfs/ ./data/waymo --num_proc 12
+python converter.py /data/waymo/tfs/ /data/waymo/training_kitti --num_proc 12 --max-record=10
