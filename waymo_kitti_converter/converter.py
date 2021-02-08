@@ -1,4 +1,4 @@
-from pyson.utils import multi_thread
+from avcv.utils import multi_thread
 import mmcv
 import os
 import numpy as np
@@ -130,7 +130,7 @@ class WaymoToKITTI(object):
             # self.save_lidar(frame, file_idx, frame_idx)
 
             # parse label files
-            self.save_label(frame, file_idx, frame_idx)
+            # self.save_label(frame, file_idx, frame_idx)
 
             # parse pose files
             # self.save_pose(frame, file_idx, frame_idx)
@@ -178,19 +178,24 @@ class WaymoToKITTI(object):
         cameras = frame.context.camera_calibrations
         # import ipdb; ipdb.set_trace()
         front_cam_intrinsic_dict = dict()
+        T_vehicle_to_front_cam = None
+        T_front_cam_to_vehicle = None
         for camera in cameras:
-            if camera.name == 1:  # FRONT = 1, see dataset.proto for details
-                T_front_cam_to_vehicle = np.array(camera.extrinsic.transform).reshape(4, 4)
-                # print('T_front_cam_to_vehicle\n', T_front_cam_to_vehicle)
-                T_vehicle_to_front_cam = np.linalg.inv(T_front_cam_to_vehicle)
-                cam_intrinsic = np.zeros((3, 4))
-                cam_intrinsic[0, 0] = camera.intrinsic[0]
-                cam_intrinsic[1, 1] = camera.intrinsic[1]
-                cam_intrinsic[0, 2] = camera.intrinsic[2]
-                cam_intrinsic[1, 2] = camera.intrinsic[3]
-                cam_intrinsic[2, 2] = 1
-                front_cam_intrinsic_dict[camera.name] = cam_intrinsic
-                break
+            # if camera.name == 1:  # FRONT = 1, see dataset.proto for details
+            T_cam_to_vehicle = np.array(camera.extrinsic.transform).reshape(4, 4)
+            # print('T_front_cam_to_vehicle\n', T_front_cam_to_vehicle)
+            T_vehicle_to_cam = np.linalg.inv(T_cam_to_vehicle)
+            if camera.name == 1:
+                T_vehicle_to_front_cam = T_vehicle_to_cam
+                T_front_cam_to_vehicle = T_cam_to_vehicle
+            cam_intrinsic = np.zeros((3, 4))
+            cam_intrinsic[0, 0] = camera.intrinsic[0]
+            cam_intrinsic[1, 1] = camera.intrinsic[1]
+            cam_intrinsic[0, 2] = camera.intrinsic[2]
+            cam_intrinsic[1, 2] = camera.intrinsic[3]
+            cam_intrinsic[2, 2] = 1
+            front_cam_intrinsic_dict[camera.name] = cam_intrinsic
+                # break
 
         # print('front_cam_intrinsic\n', front_cam_intrinsic)
 
@@ -212,7 +217,6 @@ class WaymoToKITTI(object):
         if not self.check_file_exists(calib_save_path):
             with open(calib_save_path, 'w+') as fp_calib:
                 fp_calib.write(calib_context)
-            # import ipdb; ipdb.set_trace()
 
     def save_lidar(self, frame, file_idx, frame_idx):
         """ parse and save the lidar data in psd format
@@ -430,6 +434,7 @@ class WaymoToKITTI(object):
         Pose is important for algorithms that takes advantage of the temporal information
 
         """
+
         pose_path = join(self.pose_save_dir, self.prefix + str(file_idx).zfill(3) + str(frame_idx).zfill(3) + '.txt')
         if self.check_file_exists(pose_path):
             return
