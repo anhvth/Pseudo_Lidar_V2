@@ -4,6 +4,8 @@ Author: Charles R. Qi
 Date: September 2017
 """
 from __future__ import print_function
+import argparse
+import kitti_util as utils
 
 import os
 import sys
@@ -13,8 +15,6 @@ import cv2
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = os.path.dirname(BASE_DIR)
 sys.path.append(os.path.join(ROOT_DIR, "mayavi"))
-import kitti_util as utils
-import argparse
 
 try:
     raw_input  # Python 2
@@ -24,70 +24,62 @@ except NameError:
 cbox = np.array([[0, 70.4], [-40, 40], [-3, 1]])
 
 
-class kitti_object(object):
+class WaymoObject(object):
     """Load and parse object data into a usable format."""
 
-    def __init__(self, root_dir, split="training", camera_name=1, args=None):
+    def __init__(self, root_dir, camera_name=1, image_dir="image", label_dir="label",
+                 lidar_dir="velodyne",
+                 depth_dir="depth",
+                 pred_dir="pred",
+                 index_format = "%06d",
+                 args=None):
         """root_dir contains training and testing folders"""
         self.root_dir = root_dir
-        self.split = split
-        print(root_dir, split)
-        self.split_dir = os.path.join(root_dir, split)
+        self.index_format = index_format
 
-        if split == "training":
-            self.num_samples = 7481
-        elif split == "testing":
-            self.num_samples = 7518
-        else:
-            print("Unknown split: %s" % (split))
-            exit(-1)
-
-        lidar_dir = "velodyne"
-        depth_dir = "depth"
-        pred_dir = "pred"
         if args is not None:
             lidar_dir = args.lidar
             depth_dir = args.depthdir
             pred_dir = args.preddir
         self.camera_name = camera_name
-        self.camera_id=camera_name-1
-        self.image_dir = os.path.join(self.split_dir, f"image_{self.camera_id}")
-        self.label_dir = os.path.join(self.split_dir, f"label_{self.camera_id}")
-        self.calib_dir = os.path.join(self.split_dir, "calib")
+        self.camera_id = camera_name-1
+        self.image_dir = os.path.join(self.root_dir, image_dir)
+        self.label_dir = os.path.join(self.root_dir, label_dir)
+        self.calib_dir = os.path.join(self.root_dir, "calib")
 
-        self.depthpc_dir = os.path.join(self.split_dir, "depth_pc")
-        self.lidar_dir = os.path.join(self.split_dir, lidar_dir)
-        self.depth_dir = os.path.join(self.split_dir, depth_dir)
-        self.pred_dir = os.path.join(self.split_dir, pred_dir)
+        self.depthpc_dir = os.path.join(self.root_dir, "depth_pc")
+        self.lidar_dir = os.path.join(self.root_dir, lidar_dir)
+        self.depth_dir = os.path.join(self.root_dir, depth_dir)
+        self.pred_dir = os.path.join(self.root_dir, pred_dir)
 
     def __len__(self):
         return self.num_samples
 
     def get_image(self, idx):
-        assert idx < self.num_samples
-        img_filename = os.path.join(self.image_dir, "%07d.jpg" % (idx))
+        # assert idx < self.num_samples
+        img_filename = os.path.join(self.image_dir, f"{self.index_format}.jpg" % (idx))
         assert os.path.exists(img_filename), img_filename
         return utils.load_image(img_filename)
 
     def get_lidar(self, idx, dtype=np.float32, n_vec=4):
-        assert idx < self.num_samples
-        lidar_filename = os.path.join(self.lidar_dir, "%07d.bin" % (idx))
+        # assert idx < self.num_samples
+        lidar_filename = os.path.join(self.lidar_dir, f"{self.index_format}.bin" % (idx))
         print(lidar_filename)
         return utils.load_velo_scan(lidar_filename, dtype, n_vec)
 
     def get_calibration(self, idx):
-        assert idx < self.num_samples
-        calib_filename = os.path.join(self.calib_dir, "%07d.txt" % (idx))
+        # assert idx < self.num_samples
+        calib_filename = os.path.join(self.calib_dir, f"{self.index_format}.txt" % (idx))
         return utils.Calibration(calib_filename, camera_name=f'P2')
 
     def get_label_objects(self, idx):
-        assert idx < self.num_samples and self.split == "training"
-        label_filename = os.path.join(self.label_dir, "%07d.txt" % (idx))
+        # assert idx < self.num_samples and self.split == "training"
+        label_filename = os.path.join(self.label_dir, f"{self.index_format}.txt" % (idx))
         return utils.read_label(label_filename)
 
     def get_pred_objects(self, idx):
-        assert idx < self.num_samples
-        pred_filename = os.path.join(self.pred_dir, "%07d.txt" % (idx))
+        # assert idx < self.num_samples
+        pred_filename = os.path.join(self.pred_dir, f"{self.index_format}.txt" % (idx))
         is_exist = os.path.exists(pred_filename)
         if is_exist:
             return utils.read_label(pred_filename)
@@ -96,18 +88,18 @@ class kitti_object(object):
             return None
 
     def get_depth(self, idx):
-        assert idx < self.num_samples
-        img_filename = os.path.join(self.depth_dir, "%07d.png" % (idx))
+        # assert idx < self.num_samples
+        img_filename = os.path.join(self.depth_dir, f"{self.index_format}.png" % (idx))
         return utils.load_depth(img_filename)
 
     def get_depth_image(self, idx):
-        assert idx < self.num_samples
-        img_filename = os.path.join(self.depth_dir, "%07d.png" % (idx))
+        # assert idx < self.num_samples
+        img_filename = os.path.join(self.depth_dir, f"{self.index_format}.png" % (idx))
         return utils.load_depth(img_filename)
 
     def get_depth_pc(self, idx):
-        assert idx < self.num_samples
-        lidar_filename = os.path.join(self.depthpc_dir, "%07d.bin" % (idx))
+        # assert idx < self.num_samples
+        lidar_filename = os.path.join(self.depthpc_dir, f"{self.index_format}.bin" % (idx))
         is_exist = os.path.exists(lidar_filename)
         if is_exist:
             return utils.load_velo_scan(lidar_filename), is_exist
@@ -120,13 +112,13 @@ class kitti_object(object):
         pass
 
     def isexist_pred_objects(self, idx):
-        assert idx < self.num_samples and self.split == "training"
-        pred_filename = os.path.join(self.pred_dir, "%07d.txt" % (idx))
+        # assert idx < self.num_samples and self.split == "training"
+        pred_filename = os.path.join(self.pred_dir, f"{self.index_format}.txt" % (idx))
         return os.path.exists(pred_filename)
 
     def isexist_depth(self, idx):
-        assert idx < self.num_samples and self.split == "training"
-        depth_filename = os.path.join(self.depth_dir, "%07d.txt" % (idx))
+        # assert idx < self.num_samples and self.split == "training"
+        depth_filename = os.path.join(self.depth_dir, f"{self.index_format}.txt" % (idx))
         return os.path.exists(depth_filename)
 
 
@@ -138,10 +130,12 @@ class kitti_object_video(object):
         self.img_dir = img_dir
         self.lidar_dir = lidar_dir
         self.img_filenames = sorted(
-            [os.path.join(img_dir, filename) for filename in os.listdir(img_dir)]
+            [os.path.join(img_dir, filename)
+             for filename in os.listdir(img_dir)]
         )
         self.lidar_filenames = sorted(
-            [os.path.join(lidar_dir, filename) for filename in os.listdir(lidar_dir)]
+            [os.path.join(lidar_dir, filename)
+             for filename in os.listdir(lidar_dir)]
         )
         print(len(self.img_filenames))
         print(len(self.lidar_filenames))
@@ -152,12 +146,12 @@ class kitti_object_video(object):
         return self.num_samples
 
     def get_image(self, idx):
-        assert idx < self.num_samples
+        # assert idx < self.num_samples
         img_filename = self.img_filenames[idx]
         return utils.load_image(img_filename)
 
     def get_lidar(self, idx):
-        assert idx < self.num_samples
+        # assert idx < self.num_samples
         lidar_filename = self.lidar_filenames[idx]
         return utils.load_velo_scan(lidar_filename)
 
@@ -169,7 +163,8 @@ def viz_kitti_video():
     video_path = os.path.join(ROOT_DIR, "dataset/2011_09_26/")
     dataset = kitti_object_video(
         os.path.join(video_path, "2011_09_26_drive_0023_sync/image_02/data"),
-        os.path.join(video_path, "2011_09_26_drive_0023_sync/velodyne_points/data"),
+        os.path.join(
+            video_path, "2011_09_26_drive_0023_sync/velodyne_points/data"),
         video_path,
     )
     print(len(dataset))
@@ -189,45 +184,47 @@ def show_image_with_boxes(img, objects, calib, show3d=True, depth=None):
     """ Show image with 2D bounding boxes """
     img1 = np.copy(img)  # for 2d bbox
     img2 = np.copy(img)  # for 3d bbox
-    #img3 = np.copy(img)  # for 3d bbox
-    #TODO: change the color of boxes
-    
+    # img3 = np.copy(img)  # for 3d bbox
+    # TODO: change the color of boxes
+
     for obj in objects:
         if obj.type == "DontCare":
             continue
         if obj.type == "Car":
             cv2.rectangle(
-            img1,
-            (int(obj.xmin), int(obj.ymin)),
-            (int(obj.xmax), int(obj.ymax)),
-            (0, 255, 0),
-            2,
-        )
+                img1,
+                (int(obj.xmin), int(obj.ymin)),
+                (int(obj.xmax), int(obj.ymax)),
+                (0, 255, 0),
+                2,
+            )
         if obj.type == "Pedestrian":
             cv2.rectangle(
-            img1,
-            (int(obj.xmin), int(obj.ymin)),
-            (int(obj.xmax), int(obj.ymax)),
-            (255, 255, 0),
-            2,
-        )
+                img1,
+                (int(obj.xmin), int(obj.ymin)),
+                (int(obj.xmax), int(obj.ymax)),
+                (255, 255, 0),
+                2,
+            )
         if obj.type == "Cyclist":
             cv2.rectangle(
-            img1,
-            (int(obj.xmin), int(obj.ymin)),
-            (int(obj.xmax), int(obj.ymax)),
-            (0, 255, 255),
-            2,
-        )
+                img1,
+                (int(obj.xmin), int(obj.ymin)),
+                (int(obj.xmax), int(obj.ymax)),
+                (0, 255, 255),
+                2,
+            )
         box3d_pts_2d, _ = utils.compute_box_3d(obj, calib.P)
         if box3d_pts_2d is not None:
             if obj.type == "Car":
-                img2 = utils.draw_projected_box3d(img2, box3d_pts_2d, color=(0, 255, 0))
+                img2 = utils.draw_projected_box3d(
+                    img2, box3d_pts_2d, color=(0, 255, 0))
             elif obj.type == "Pedestrian":
-                img2 = utils.draw_projected_box3d(img2, box3d_pts_2d, color=(255, 255, 0))
+                img2 = utils.draw_projected_box3d(
+                    img2, box3d_pts_2d, color=(255, 255, 0))
             elif obj.type == "Cyclist":
-                img2 = utils.draw_projected_box3d(img2, box3d_pts_2d, color=(0, 255, 255))
-
+                img2 = utils.draw_projected_box3d(
+                    img2, box3d_pts_2d, color=(0, 255, 255))
 
         # project
         # box3d_pts_3d_velo = calib.project_rect_to_velo(box3d_pts_3d)
@@ -244,7 +241,7 @@ def show_image_with_boxes(img, objects, calib, show3d=True, depth=None):
         cv2.imshow("3dbox", img2)
     if depth is not None:
         cv2.imshow("depth", depth)
-    
+
     return img1, img2
 
 
@@ -271,7 +268,8 @@ def show_image_with_boxes_3type(img, objects, calib, objects2d, name, objects_pr
     text_lables.insert(0, "Label:")
     for n in range(len(text_lables)):
         text_pos = (startx, 25 * (n + 1))
-        cv2.putText(img1, text_lables[n], text_pos, font, 0.5, color, 0, cv2.LINE_AA)
+        cv2.putText(img1, text_lables[n], text_pos,
+                    font, 0.5, color, 0, cv2.LINE_AA)
     # draw 2D Pred
     color = (0, 0, 255)
     for obj in objects2d:
@@ -289,7 +287,8 @@ def show_image_with_boxes_3type(img, objects, calib, objects2d, name, objects_pr
     text_lables.insert(0, "2D Pred:")
     for n in range(len(text_lables)):
         text_pos = (startx, 25 * (n + 1))
-        cv2.putText(img1, text_lables[n], text_pos, font, 0.5, color, 0, cv2.LINE_AA)
+        cv2.putText(img1, text_lables[n], text_pos,
+                    font, 0.5, color, 0, cv2.LINE_AA)
     # draw 3D Pred
     if objects_pred is not None:
         color = (255, 0, 0)
@@ -306,7 +305,8 @@ def show_image_with_boxes_3type(img, objects, calib, objects2d, name, objects_pr
         startx = 165
         font = cv2.FONT_HERSHEY_SIMPLEX
 
-        text_lables = [obj.type for obj in objects_pred if obj.type in type_list]
+        text_lables = [
+            obj.type for obj in objects_pred if obj.type in type_list]
         text_lables.insert(0, "3D Pred:")
         for n in range(len(text_lables)):
             text_pos = (startx, 25 * (n + 1))
@@ -416,7 +416,7 @@ def show_lidar_with_depth(
         if save:
             data_idx = 0
             vely_dir = "data/object/training/depth_pc"
-            save_filename = os.path.join(vely_dir, "%07d.bin" % (data_idx))
+            save_filename = os.path.join(vely_dir, f"{self.index_format}.bin" % (data_idx))
             print(save_filename)
             # np.save(save_filename+".npy", np.array(depth_pc_velo))
             depth_pc_velo = depth_pc_velo.astype(np.float32)
@@ -433,14 +433,16 @@ def show_lidar_with_depth(
             print("box3d_pts_3d_velo:")
             print(box3d_pts_3d_velo)
 
-            #TODO: change the color of boxes
+            # TODO: change the color of boxes
             if obj.type == "Car":
-                draw_gt_boxes3d([box3d_pts_3d_velo], fig=fig, color=(0,1,0), label=obj.type)
+                draw_gt_boxes3d([box3d_pts_3d_velo], fig=fig,
+                                color=(0, 1, 0), label=obj.type)
             elif obj.type == "Pedestrian":
-                draw_gt_boxes3d([box3d_pts_3d_velo], fig=fig, color=(0,1,1), label=obj.type)
+                draw_gt_boxes3d([box3d_pts_3d_velo], fig=fig,
+                                color=(0, 1, 1), label=obj.type)
             elif obj.type == "Cyclist":
-                draw_gt_boxes3d([box3d_pts_3d_velo], fig=fig, color=(1,1,0), label=obj.type)
-
+                draw_gt_boxes3d([box3d_pts_3d_velo], fig=fig,
+                                color=(1, 1, 0), label=obj.type)
 
     if objects_pred is not None:
         color = (1, 0, 0)
@@ -504,7 +506,7 @@ def save_depth0(
         print("depth_pc:", depth_pc.shape)
 
     vely_dir = "data/object/training/depth_pc"
-    save_filename = os.path.join(vely_dir, "%07d.bin" % (data_idx))
+    save_filename = os.path.join(vely_dir, f"{self.index_format}.bin" % (data_idx))
 
     depth_pc = depth_pc.astype(np.float32)
     depth_pc.tofile(save_filename)
@@ -530,7 +532,7 @@ def save_depth(
         print("depth_pc:", depth_pc.shape)
 
     vely_dir = "data/object/training/depth_pc"
-    save_filename = os.path.join(vely_dir, "%07d.bin" % (data_idx))
+    save_filename = os.path.join(vely_dir, f"{self.index_format}.bin" % (data_idx))
 
     depth_pc = depth_pc.astype(np.float32)
     depth_pc.tofile(save_filename)
@@ -677,7 +679,7 @@ def stat_lidar_with_boxes(pc_velo, objects, calib):
 
 def show_lidar_on_image(pc_velo, img, calib, img_width, img_height):
     """ Project LiDAR points to image """
-    img =  np.copy(img)
+    img = np.copy(img)
     imgfov_pc_velo, pts_2d, fov_inds = get_lidar_in_image_fov(
         pc_velo, calib, 0, 0, img_width, img_height, True
     )
@@ -694,7 +696,8 @@ def show_lidar_on_image(pc_velo, img, calib, img_width, img_height):
         color = cmap[int(640.0 / depth), :]
         cv2.circle(
             img,
-            (int(np.round(imgfov_pts_2d[i, 0])), int(np.round(imgfov_pts_2d[i, 1]))),
+            (int(np.round(imgfov_pts_2d[i, 0])),
+             int(np.round(imgfov_pts_2d[i, 1]))),
             2,
             color=tuple(color),
             thickness=-1,
@@ -725,7 +728,8 @@ def show_lidar_topview_with_boxes(pc_velo, objects, calib, objects_pred=None):
     )
     # pred
     if objects_pred is not None:
-        boxes3d = [bbox3d(obj) for obj in objects_pred if obj.type != "DontCare"]
+        boxes3d = [bbox3d(obj)
+                   for obj in objects_pred if obj.type != "DontCare"]
         gt = np.array(boxes3d)
         lines = [obj.type for obj in objects_pred if obj.type != "DontCare"]
         top_image = utils.draw_box3d_on_top(
@@ -737,8 +741,8 @@ def show_lidar_topview_with_boxes(pc_velo, objects, calib, objects_pred=None):
 
 
 def dataset_viz(root_dir, args):
-    dataset = kitti_object(root_dir, split=args.split, args=args)
-    ## load 2d detection results
+    dataset = WaymoObject(root_dir, split=args.split, args=args)
+    # load 2d detection results
     #objects2ds = read_det_file("box2d.list")
 
     if args.show_lidar_with_depth:
@@ -806,7 +810,8 @@ def dataset_viz(root_dir, args):
         # Draw 3d box in LiDAR point cloud
         if args.show_lidar_topview_with_boxes:
             # Draw lidar top view
-            show_lidar_topview_with_boxes(pc_velo, objects, calib, objects_pred)
+            show_lidar_topview_with_boxes(
+                pc_velo, objects, calib, objects_pred)
 
         # show_image_with_boxes_3type(img, objects, calib, objects2d, data_idx, objects_pred)
         if args.show_image_with_boxes:
@@ -833,7 +838,8 @@ def dataset_viz(root_dir, args):
             #    objects_pred, depth, img)
         if args.show_lidar_on_image:
             # Show LiDAR points on image.
-            show_lidar_on_image(pc_velo[:, 0:3], img, calib, img_width, img_height)
+            show_lidar_on_image(
+                pc_velo[:, 0:3], img, calib, img_width, img_height)
         input_str = raw_input()
 
         mlab.clf()
@@ -842,7 +848,7 @@ def dataset_viz(root_dir, args):
 
 
 def depth_to_lidar_format(root_dir, args):
-    dataset = kitti_object(root_dir, split=args.split, args=args)
+    dataset = WaymoObject(root_dir, split=args.split, args=args)
     for data_idx in range(len(dataset)):
         # Load data from dataset
 
@@ -946,11 +952,14 @@ if __name__ == "__main__":
         metavar="N",
         help="predicted boxes  (default: pred)",
     )
-    parser.add_argument("--gen_depth", action="store_true", help="generate depth")
+    parser.add_argument("--gen_depth", action="store_true",
+                        help="generate depth")
     parser.add_argument("--vis", action="store_true", help="show images")
     parser.add_argument("--depth", action="store_true", help="load depth")
-    parser.add_argument("--img_fov", action="store_true", help="front view mapping")
-    parser.add_argument("--const_box", action="store_true", help="constraint box")
+    parser.add_argument("--img_fov", action="store_true",
+                        help="front view mapping")
+    parser.add_argument("--const_box", action="store_true",
+                        help="constraint box")
     parser.add_argument(
         "--save_depth", action="store_true", help="save depth into file"
     )
