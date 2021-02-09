@@ -72,7 +72,7 @@ class WaymoObject(object):
     def get_calibration(self, idx):
         # assert idx < self.num_samples
         calib_filename = os.path.join(self.calib_dir, f"{self.index_format}.txt" % (idx))
-        return utils.Calibration(calib_filename, camera_name=f'P2')
+        return utils.Calibration(calib_filename, camera_name=self.camera_name)
 
     def get_label_objects(self, idx):
         # assert idx < self.num_samples and self.split == "training"
@@ -216,6 +216,7 @@ def show_image_with_boxes(img, objects, calib, show3d=True, depth=None):
                 (0, 255, 255),
                 2,
             )
+        # obj.ry -= np.pi/2
         box3d_pts_2d, _ = utils.compute_box_3d(obj, calib.P)
         if box3d_pts_2d is not None:
             if obj.type == "Car":
