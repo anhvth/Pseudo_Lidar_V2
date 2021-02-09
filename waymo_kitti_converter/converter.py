@@ -60,11 +60,11 @@ save_track_id = True
 
 class WaymoToKITTI(object):
 
-    def __init__(self, load_dir, save_dir, prefix, num_proc, max_record=None, cameras=[0, 1, 2, 3, 4], convert_lidar=False, convert_pose=False):
+    def __init__(self, load_dir, save_dir, prefix, num_proc, camera_name, max_record=None, convert_lidar=False, convert_pose=False):
         # turn on eager execution for older tensorflow versions
         if int(tf.__version__.split('.')[0]) < 2:
             tf.enable_eager_execution()
-        self.cameras = cameras
+        self.camera_name = int(camera_name)
         self.lidar_list = ['_FRONT', '_FRONT_RIGHT',
                            '_FRONT_LEFT', '_SIDE_RIGHT', '_SIDE_LEFT']
         self.type_list = ['UNKNOWN', 'VEHICLE',
@@ -154,8 +154,8 @@ class WaymoToKITTI(object):
                 :return:
         """
         for img in frame.images:
-            camera_id = img.name - 1
-            if camera_id in self.cameras:
+            camera_id = img.name-1
+            if  img.name == self.camera_name:
                 img_path = self.image_save_dir + str(camera_id) + '/' + self.prefix + str(
                     file_idx).zfill(3) + str(frame_idx).zfill(3) + '.jpg'
                 if not self.check_file_exists(img_path):
@@ -219,7 +219,7 @@ class WaymoToKITTI(object):
         # print('context\n',frame.context)
 
         for camera in frame.context.camera_calibrations:
-            if camera.name == 1:  # FRONT = 1, see dataset.proto for details
+            if camera.name == self.camera_name:  # FRONT = 1, see dataset.proto for details
                 T_front_cam_to_vehicle = np.array(
                     camera.extrinsic.transform).reshape(4, 4)
                 # print('T_front_cam_to_vehicle\n', T_front_cam_to_vehicle)
@@ -485,9 +485,7 @@ class WaymoToKITTI(object):
             x = obj.box.center_x
             y = obj.box.center_y
             z = obj.box.center_z - height / 2
-
             # print('bef', x,y,z)
-
             # project bounding box to the virtual reference frame
             pt_ref = self.cart_to_homo(
                 self.T_front_cam_to_ref) @ self.T_vehicle_to_front_cam @ np.array([x, y, z, 1]).reshape((4, 1))
@@ -550,13 +548,11 @@ class WaymoToKITTI(object):
                 line_all = line[:-1] + ' ' + name + ' ' + track_id + '\n'
             else:
                 line_all = line[:-1] + ' ' + name + '\n'
-
             # store the label
             fp_label = open(self.label_save_dir + name + '/' + self.prefix +
                             str(file_idx).zfill(3) + str(frame_idx).zfill(3) + '.txt', 'a')
             fp_label.write(line)
             fp_label.close()
-
             fp_label_all.write(line_all)
 
         fp_label_all.close()
@@ -735,7 +731,7 @@ if __name__ == '__main__':
                         help='Number of processes to spawn')
     parser.add_argument('--max-record', default=None,
                         type=int, help='Number of processes to spawn')
-    parser.add_argument('--cameras', default='0,1,2,3,4',
+    parser.add_argument('--camera_name', default='1',
                         type=str, help='Camera ids ')
     parser.add_argument('--convert_lidar', action='store_true',
                         default=False, help='Convert lidar is time-consuming')
@@ -743,8 +739,8 @@ if __name__ == '__main__':
                         default=False, help='Convert pose is time-consuming')
 
     args = parser.parse_args()
-    cameras = [int(i) for i in args.cameras.split(',')]
+    # cameras = [int(i) for i in args.cameras.split(',')]
 
     converter = WaymoToKITTI(args.load_dir, args.save_dir, args.prefix, args.num_proc, max_record=args.max_record,
-                             cameras=cameras, convert_lidar=args.convert_lidar, convert_pose=args.convert_pose)
+                             camera_name=args.camera_name, convert_lidar=args.convert_lidar, convert_pose=args.convert_pose)
     converter.convert()

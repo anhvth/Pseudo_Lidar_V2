@@ -1,1 +1,1 @@
-python converter.py /data/waymo/tfs/ /data/waymo/training_kitti --num_proc 4 --cameras 0
+python converter.py /data/waymo/tfs/ /data/waymo/training_kitti/2 --num_proc 4 --camera_name=2
