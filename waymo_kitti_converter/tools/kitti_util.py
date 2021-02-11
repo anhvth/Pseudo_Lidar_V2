@@ -143,16 +143,21 @@ class Calibration(object):
         TODO(rqi): do matrix multiplication only once for each projection.
     """
 
-    def __init__(self, calib_filepath, from_video=False):
+    def __init__(self, calib_filepath, from_video=False, camera_name=None):
         if from_video:
             calibs = self.read_calib_from_video(calib_filepath)
         else:
             calibs = self.read_calib_file(calib_filepath)
         # Projection matrix from rect camera coord to image2 coord
-        self.P = calibs["P2"]
+        assert f'P{camera_name}' in calibs, calibs.keys()
+        self.P = calibs[f'P{camera_name}']
+        self.calibs = calibs
+
         self.P = np.reshape(self.P, [3, 4])
         # Rigid transform from Velodyne coord to reference camera coord
-        self.V2C = calibs["Tr_velo_to_cam"]
+        self.V2C = calibs["Tr_velo_to_cam"] if "Tr_volo_to_cam" in calibs else calibs[f"Tr_velo_to_cam_{camera_name}"]
+        # import ipdb; ipdb.set_trace()
+
         self.V2C = np.reshape(self.V2C, [3, 4])
         self.C2V = inverse_rigid_trans(self.V2C)
         # Rotation from reference camera coord to rect camera coord
@@ -414,17 +419,14 @@ def load_velo_scan(velo_filename, dtype=np.float32, n_vec=4):
     return scan
 
 
-def lidar_to_top_coords(x, y, z=None):
-    if 0:
-        return x, y
-    else:
-        # print("TOP_X_MAX-TOP_X_MIN:",TOP_X_MAX,TOP_X_MIN)
-        X0, Xn = 0, int((TOP_X_MAX - TOP_X_MIN) // TOP_X_DIVISION) + 1
-        Y0, Yn = 0, int((TOP_Y_MAX - TOP_Y_MIN) // TOP_Y_DIVISION) + 1
-        xx = Yn - int((y - TOP_Y_MIN) // TOP_Y_DIVISION)
-        yy = Xn - int((x - TOP_X_MIN) // TOP_X_DIVISION)
+def lidar_to_top_coords(x, y):
+    # print("TOP_X_MAX-TOP_X_MIN:",TOP_X_MAX,TOP_X_MIN)
+    Xn = int((TOP_X_MAX - TOP_X_MIN) // TOP_X_DIVISION) + 1
+    Yn = int((TOP_Y_MAX - TOP_Y_MIN) // TOP_Y_DIVISION) + 1
+    xx = Yn - int((y - TOP_Y_MIN) // TOP_Y_DIVISION)
+    yy = Xn - int((x - TOP_X_MIN) // TOP_X_DIVISION)
 
-        return xx, yy
+    return xx, yy
 
 
 def lidar_to_top(lidar):
@@ -595,10 +597,11 @@ def project_to_image(pts_3d, P):
     n = pts_3d.shape[0]
     pts_3d_extend = np.hstack((pts_3d, np.ones((n, 1))))
     # print(('pts_3d_extend shape: ', pts_3d_extend.shape))
-    pts_2d = np.dot(pts_3d_extend, np.transpose(P))  # nx3
+    pts_3d = np.dot(pts_3d_extend, np.transpose(P))  # nx3
+    pts_2d = pts_3d.copy()
     pts_2d[:, 0] /= pts_2d[:, 2]
     pts_2d[:, 1] /= pts_2d[:, 2]
-    return pts_2d[:, 0:2]
+    return pts_2d[:, 0:2], pts_3d
 
 
 def compute_box_3d(obj, P):
@@ -634,8 +637,7 @@ def compute_box_3d(obj, P):
         return corners_2d, np.transpose(corners_3d)
 
     # project the 3d bounding box into the image plane
-    corners_2d = project_to_image(np.transpose(corners_3d), P)
-    # print 'corners_2d: ', corners_2d
+    corners_2d, corners_3d = project_to_image(np.transpose(corners_3d), P)
     return corners_2d, np.transpose(corners_3d)
 
 
@@ -692,8 +694,26 @@ def draw_projected_box3d(image, qs, color=(0, 255, 0), thickness=2):
 
         i, j = k, k + 4
         cv2.line(image, (qs[i, 0], qs[i, 1]), (qs[j, 0], qs[j, 1]), color, thickness)
-    return image
+    # qs = qs.
+    return draw_3d(image, qs.reshape([2,2,2,2]))
 
+    # return image
+
+def draw_3d(img, vertices, colour=(0,0,255)):
+    # Draw the edges of the 3D bounding box
+    from avcv.vision import put_text
+
+    # for k in [0, 1]:
+    #     for l in [0, 1]:
+    #         for idx1,idx2 in [((0,k,l),(1,k,l)), ((k,0,l),(k,1,l)), ((k,l,0),(k,l,1))]:
+    #             cv2.line(img, tuple(vertices[idx1]), tuple(vertices[idx2]), colour, thickness=1)
+    #             # put_text(img, tuple(vertices[idx1]), f'{idx1}')
+    #             # put_text(img, tuple(vertices[idx2]), f'{idx2}')
+                
+    # Draw a cross on the front face to identify front & back.
+    for idx1,idx2 in [((1,0,0),(0,0,1)), ((1,0,1),(0,0,0))]:
+        cv2.line(img, tuple(vertices[idx1]), tuple(vertices[idx2]), colour, thickness=2)
+    return img
 
 def draw_top_image(lidar_top):
     top_image = np.sum(lidar_top, axis=2)
@@ -789,7 +809,7 @@ def linear_regression(train_x, train_y, test_x):
 
     # dump fit result
     dump_fit_func(w_fit)
-    fit_cost = dump_fit_cost(w_fit, train_x, train_y)
+    dump_fit_cost(w_fit, train_x, train_y)
 
     # test set
     # test_x = np.array(np.arange(train_x.min(), train_x.max(), 1.0))

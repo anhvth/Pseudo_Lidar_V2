@@ -378,137 +378,136 @@ class WaymoToKITTI(object):
                 id_to_name[label.id] = name - 1
 
         # print([i.type for i in frame.laser_labels])
-        for obj in frame.laser_labels:
-            # calculate bounding box
-            bounding_box = None
-            name = None
-            id = obj.id
-            for lidar in self.lidar_list:
-                if id + lidar in id_to_bbox:
-                    bounding_box = id_to_bbox.get(id + lidar)
-                    name = str(id_to_name.get(id + lidar))
-                    break
+        for name in range(5):
+            name = str(name)
+            for obj in frame.laser_labels:
+                # calculate bounding box
+                id = obj.id
+                # for lidar in self.lidar_list:
+                #     if id + lidar in id_to_bbox:
+                #         bounding_box = id_to_bbox.get(id + lidar)
+                #         name = str(id_to_name.get(id + lidar))
+                #         break
 
 
-            my_type = self.type_list[obj.type]
+                my_type = self.type_list[obj.type]
 
-            if my_type not in selected_waymo_classes:
-                continue
-
-            # TODO: temp fix
-            if bounding_box == None or name == None:
-                name = '0'
+                if my_type not in selected_waymo_classes:
+                    continue
+                # TODO: temp fix
+                # if bounding_box == None or name == None:
+                #     name = '2'
                 bounding_box = (0, 0, 0, 0)
-                # import ipdb; ipdb.set_trace()
-                # raise ValueError
-                
-            if filter_empty_3dboxes and obj.num_lidar_points_in_box < 1:
-                continue
+                    # import ipdb; ipdb.set_trace()
+                    # raise ValueError
+                    
+                # if filter_empty_3dboxes and obj.num_lidar_points_in_box < 1:
+                #     continue
 
-            # from waymo_open_dataset.utils.box_utils import compute_num_points_in_box_3d
-            # print('annot:', obj.num_lidar_points_in_box)
-            # num_points_in_gt_waymo = compute_num_points_in_box_3d(
-            #     tf.convert_to_tensor(self.pc.astype(np.float32), dtype=tf.float32),
-            #     tf.convert_to_tensor(np.array([[obj.box.center_x, obj.box.center_y, obj.box.center_z,  obj.box.length,obj.box.width,  obj.box.height,obj.box.heading]]).astype(np.float32), dtype=tf.float32))
-            # print('actual:', num_points_in_gt_waymo.numpy())
+                # from waymo_open_dataset.utils.box_utils import compute_num_points_in_box_3d
+                # print('annot:', obj.num_lidar_points_in_box)
+                # num_points_in_gt_waymo = compute_num_points_in_box_3d(
+                #     tf.convert_to_tensor(self.pc.astype(np.float32), dtype=tf.float32),
+                #     tf.convert_to_tensor(np.array([[obj.box.center_x, obj.box.center_y, obj.box.center_z,  obj.box.length,obj.box.width,  obj.box.height,obj.box.heading]]).astype(np.float32), dtype=tf.float32))
+                # print('actual:', num_points_in_gt_waymo.numpy())
 
-            # visualizer
-            # [261   56   24   15   46  254   24  824  146   26    5   13   30   45
-            #  60  184  347  222 1774    2   46]
+                # visualizer
+                # [261   56   24   15   46  254   24  824  146   26    5   13   30   45
+                #  60  184  347  222 1774    2   46]
 
-            # converter
-            # 264, 59, 24, 16, 51, 268, 24, 847, 149, 28, 6, 13, 30, 45, \
-            # 64, 192, 353, 229, 1848, 2, 48
+                # converter
+                # 264, 59, 24, 16, 51, 268, 24, 847, 149, 28, 6, 13, 30, 45, \
+                # 64, 192, 353, 229, 1848, 2, 48
 
-            my_type = self.waymo_to_kitti_class_map[my_type]
+                my_type = self.waymo_to_kitti_class_map[my_type]
 
-            # length: along the longer axis that is perpendicular to gravity direction
-            # width: along the shorter axis  that is perpendicular to gravity direction
-            # height: along the gravity direction
-            # the same for waymo and kitti
-            height = obj.box.height  # up/down
-            width = obj.box.width  # left/right
-            length = obj.box.length  # front/back
+                # length: along the longer axis that is perpendicular to gravity direction
+                # width: along the shorter axis  that is perpendicular to gravity direction
+                # height: along the gravity direction
+                # the same for waymo and kitti
+                height = obj.box.height  # up/down
+                width = obj.box.width  # left/right
+                length = obj.box.length  # front/back
 
-            # waymo: bbox label in lidar/vehicle frame. kitti: bbox label in reference image frame
-            # however, kitti uses bottom center as the box origin, whereas waymo uses the true center
-            x = obj.box.center_x
-            y = obj.box.center_y
-            z = obj.box.center_z - height / 2
-            # print('bef', x,y,z)
-            # project bounding box to the virtual reference frame
-            camera_id = int(name)+1#CAMERA_NAME2ID #[lidar[1:]]
+                # waymo: bbox label in lidar/vehicle frame. kitti: bbox label in reference image frame
+                # however, kitti uses bottom center as the box origin, whereas waymo uses the true center
+                x = obj.box.center_x
+                y = obj.box.center_y
+                z = obj.box.center_z - height / 2
+                # print('bef', x,y,z)
+                # project bounding box to the virtual reference frame
+                camera_id = int(name)+1#CAMERA_NAME2ID #[lidar[1:]]
 
-            pt_ref = self.axes_transformation @ self.T_velo_to_cams[camera_id] @ np.array([x, y, z, 1]).reshape((4, 1))
-            x, y, z, _ = pt_ref.flatten().tolist()
-            # print('aft', x,y,z)
-            # x, y, z correspond to l, w, h (waymo) -> l, h, w (kitti)
-            # length, width, height = length, height, width
+                pt_ref = self.axes_transformation @ self.T_velo_to_cams[camera_id] @ np.array([x, y, z, 1]).reshape((4, 1))
+                x, y, z, _ = pt_ref.flatten().tolist()
+                # print('aft', x,y,z)
+                # x, y, z correspond to l, w, h (waymo) -> l, h, w (kitti)
+                # length, width, height = length, height, width
 
-            # front-left-up (waymo) -> right-down-front(kitti)
-            # bbox origin at volumetric center (waymo) -> bottom center (kitti)
-            # x, y, z = -waymo_y, -waymo_z + height / 2, waymo_x
+                # front-left-up (waymo) -> right-down-front(kitti)
+                # bbox origin at volumetric center (waymo) -> bottom center (kitti)
+                # x, y, z = -waymo_y, -waymo_z + height / 2, waymo_x
 
-            # rotation: +x around y-axis (kitti) -> +x around y-axis (waymo)
-            #           right-down-front            front-left-up
-            # note: the "rotation_y" is kept as the name of the rotation variable for compatibility
-            # it is, in fact, rotation around positive z
-            rotation_y = -obj.box.heading - np.pi / 2 
-            if name == '1':
-                rotation_y+=np.pi/4
-            elif name == '2':
-                rotation_y-=np.pi/4
-            elif name == '3':
-                rotation_y+=np.pi/2
-            elif name == '4':
-                rotation_y-=np.pi/2
+                # rotation: +x around y-axis (kitti) -> +x around y-axis (waymo)
+                #           right-down-front            front-left-up
+                # note: the "rotation_y" is kept as the name of the rotation variable for compatibility
+                # it is, in fact, rotation around positive z
+                rotation_y = -obj.box.heading - np.pi / 2 
+                if name == '1':
+                    rotation_y+=np.pi/4
+                elif name == '2':
+                    rotation_y-=np.pi/4
+                elif name == '3':
+                    rotation_y+=np.pi/2
+                elif name == '4':
+                    rotation_y-=np.pi/2
 
-            # track id
-            track_id = obj.id
-            # not available
-            truncated = 0
-            occluded = 0
-            # alpha:
-            # we set alpha to the default -10, the same as nuscenes to kitti tool
-            # contribution is welcome
-            alpha = -10
+                # track id
+                track_id = obj.id
+                # not available
+                truncated = 0
+                occluded = 0
+                # alpha:
+                # we set alpha to the default -10, the same as nuscenes to kitti tool
+                # contribution is welcome
+                alpha = -10
 
-            # save the labels
-            line = my_type + ' {} {} {} {} {} {} {} {} {} {} {} {} {} {}\n'.format(round(truncated, 2),
-                                                                                   occluded,
-                                                                                   round(
-                                                                                       alpha, 2),
-                                                                                   round(
-                                                                                       bounding_box[0], 2),
-                                                                                   round(
-                                                                                       bounding_box[1], 2),
-                                                                                   round(
-                                                                                       bounding_box[2], 2),
-                                                                                   round(
-                                                                                       bounding_box[3], 2),
-                                                                                   round(
-                                                                                       height, 2),
-                                                                                   round(
-                                                                                       width, 2),
-                                                                                   round(
-                                                                                       length, 2),
-                                                                                   round(
-                                                                                       x, 2),
-                                                                                   round(
-                                                                                       y, 2),
-                                                                                   round(
-                                                                                       z, 2),
-                                                                                   round(rotation_y, 2))
-            if save_track_id:
-                line_all = line[:-1] + ' ' + name + ' ' + track_id + '\n'
-            else:
-                line_all = line[:-1] + ' ' + name + '\n'
-            # store the label
-            fp_label = open(self.label_save_dir + name + '/' + self.prefix +
-                            str(file_idx).zfill(3) + str(frame_idx).zfill(3) + '.txt', 'a')
-            fp_label.write(line)
-            fp_label.close()
-            fp_label_all.write(line_all)
+                # save the labels
+                line = my_type + ' {} {} {} {} {} {} {} {} {} {} {} {} {} {}\n'.format(round(truncated, 2),
+                                                                                    occluded,
+                                                                                    round(
+                                                                                        alpha, 2),
+                                                                                    round(
+                                                                                        bounding_box[0], 2),
+                                                                                    round(
+                                                                                        bounding_box[1], 2),
+                                                                                    round(
+                                                                                        bounding_box[2], 2),
+                                                                                    round(
+                                                                                        bounding_box[3], 2),
+                                                                                    round(
+                                                                                        height, 2),
+                                                                                    round(
+                                                                                        width, 2),
+                                                                                    round(
+                                                                                        length, 2),
+                                                                                    round(
+                                                                                        x, 2),
+                                                                                    round(
+                                                                                        y, 2),
+                                                                                    round(
+                                                                                        z, 2),
+                                                                                    round(rotation_y, 2))
+                if save_track_id:
+                    line_all = line[:-1] + ' ' + name + ' ' + track_id + '\n'
+                else:
+                    line_all = line[:-1] + ' ' + name + '\n'
+                # store the label
+                fp_label = open(self.label_save_dir + name + '/' + self.prefix +
+                                str(file_idx).zfill(3) + str(frame_idx).zfill(3) + '.txt', 'a')
+                fp_label.write(line)
+                fp_label.close()
+                fp_label_all.write(line_all)
 
         fp_label_all.close()
 
