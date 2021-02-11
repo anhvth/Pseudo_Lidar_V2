@@ -235,15 +235,15 @@ def show_image_with_boxes(img, objects, calib, show3d=True, depth=None):
         # box3d_pts_32d = calib.project_velo_to_image(box3d_pts_3d_velo)
         # img3 = utils.draw_projected_box3d(img3, box3d_pts_32d)
     # print("img1:", img1.shape)
-    cv2.imshow("2dbox", img1)
+    # cv2.imshow("2dbox", img1)
     # print("img3:",img3.shape)
     # Image.fromarray(img3).show()
-    show3d = True
-    if show3d:
-        # print("img2:",img2.shape)
-        cv2.imshow("3dbox", img2)
-    if depth is not None:
-        cv2.imshow("depth", depth)
+    # show3d = True
+    # if show3d:
+    #     # print("img2:",img2.shape)
+    #     cv2.imshow("3dbox", img2)
+    # if depth is not None:
+    #     cv2.imshow("depth", depth)
 
     return img1, img2
 

@@ -13,11 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 
+from tqdm import tqdm
 import numpy as np
 import cv2
 import io
 import sys
-
+from avcv.vision import images_to_video
 from simple_waymo_open_dataset_reader import WaymoDataFileReader
 from simple_waymo_open_dataset_reader import dataset_pb2
 from simple_waymo_open_dataset_reader import utils
@@ -32,11 +33,11 @@ def display_labels_on_image(camera_calibration, camera, labels, display_time = -
     # Draw all the groundtruth labels
     for label in labels:
         utils.draw_3d_box(img, vehicle_to_image, label)
-
+    return img
     # Display the image
     # cv2.imshow("Image", img)
     # cv2.waitKey(display_time)
-    cv2.imwrite(f'Image.jpg', img)
+    # cv2.imwrite(f'Image.jpg', img)
     # import ipdb; ipdb.set_trace()
     
 if len(sys.argv) != 2:
@@ -46,10 +47,19 @@ Display the groundtruth 3D bounding boxes on the front camera video stream.""")
 
 # Open a .tfrecord
 from glob import glob
+import os.path as osp
+
+
 filename = sys.argv[1]
-filenames = glob(f'{filename}/*.tfrecord')
-filenames = list(sorted(filenames))
-datafile = WaymoDataFileReader(filenames[23])
+
+if not osp.isfile(filename):
+    # datafile = WaymoDataFileReader(filename)
+# else:
+    filenames = glob(f'{filename}/*.tfrecord')
+    filenames = list(sorted(filenames))
+    filename = filenames[23]
+
+datafile = WaymoDataFileReader(filename)
 
 # Generate a table of the offset of all frame records in the file.
 table = datafile.get_record_table()
@@ -59,13 +69,18 @@ print("There are %d frames in this file." % len(table))
 # Loop through the whole file
 ## and display 3D labels.
 i = 0
-for frame in datafile:
+pbar = tqdm(datafile, total=len(table))
+images = []
+for frame in pbar:
     i += 1
-    if i == 1:
-        camera_name = dataset_pb2.CameraName.SIDE_RIGHT
-        camera_calibration = utils.get(frame.context.camera_calibrations, camera_name)
-        camera = utils.get(frame.images, camera_name)
-        display_labels_on_image(camera_calibration, camera, frame.laser_labels, 10)
+    camera_name = dataset_pb2.CameraName.FRONT_LEFT
+    camera_calibration = utils.get(frame.context.camera_calibrations, camera_name)
+    camera = utils.get(frame.images, camera_name)
+    image = display_labels_on_image(camera_calibration, camera, frame.laser_labels, 10)
+    images.append(image[...,::-1])
+images_to_video(images, osp.basename(filename).split('.')[0]+'.mp4')
+
+    # cv2.imwrite(f'{i}.jpg', image)
 
 # Alternative: Displaying a single frame:
 # # Jump to the frame 150
