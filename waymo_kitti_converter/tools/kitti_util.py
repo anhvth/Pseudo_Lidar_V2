@@ -829,3 +829,20 @@ def linear_regression(train_x, train_y, test_x):
     test_y = hypothesis_func(w_fit, test_x)
     test_y0 = hypothesis_func(w_fit, train_x)
     return test_y, test_y0
+
+
+
+def is_in_image(box, img_shape):
+    """
+        box on 2d image plane
+    """
+    # import ipdb; ipdb.set_trace()
+    if isinstance(img_shape, tuple): 
+        h, w = img_shape
+    else:
+        h, w = mmcv.imread(image_shape).shape[:2]
+    if (box[:,0]<0).all() or (box[:,1]<0).all():
+        return False
+    if (box[:,0]>w).all() or (box[:,1]>h).all():
+        return False
+    return True

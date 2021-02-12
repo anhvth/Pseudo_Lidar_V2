@@ -220,7 +220,7 @@ def show_image_with_boxes(img, objects, calib, show3d=True, depth=None):
         box3d_pts_2d, _ = utils.compute_box_3d(obj, calib.P)
 
         if box3d_pts_2d is not None:
-            if is_in_image(box3d_pts_2d, img.shape[0], img.shape[1]):
+            if utils.is_in_image(box3d_pts_2d, (img.shape[0], img.shape[1])):
                 box3d_pts_2d_list.append(box3d_pts_2d)
             if obj.type == "Car":
                 img2 = utils.draw_projected_box3d(
@@ -233,13 +233,6 @@ def show_image_with_boxes(img, objects, calib, show3d=True, depth=None):
                     img2, box3d_pts_2d, color=(0, 255, 255))
     return img1, img2, box3d_pts_2d_list
 
-
-def is_in_image(box, h, w):
-    if (box[:,0]<0).all() or (box[:,1]<0).all():
-        return False
-    if (box[:,0]>w).all() or (box[:,1]>h).all():
-        return False
-    return True
 
 def get_lidar_in_image_fov(
     pc_velo, calib, xmin, ymin, xmax, ymax, return_more=False, clip_distance=2.0

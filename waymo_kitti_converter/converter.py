@@ -17,6 +17,10 @@ from waymo_open_dataset import dataset_pb2
 from waymo_open_dataset.utils import range_image_utils
 from waymo_open_dataset.utils import transform_utils
 import os
+import sys
+sys.path.insert(0, './tools')
+import kitti_util
+
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 # Abbreviations:
 # WOD: Waymo Open Dataset
@@ -33,7 +37,6 @@ filter_empty_3dboxes = False
 # There is no bounding box annotations in the No Label Zone (NLZ)
 # if set True, points in the NLZ are filtered
 filter_no_label_zone_points = True
-
 
 # Only bounding boxes of certain classes are converted
 # Note: Waymo Open Dataset evaluates for ALL_NS, including only 'VEHICLE', 'PEDESTRIAN', 'CYCLIST'
@@ -143,11 +146,10 @@ class WaymoToKITTI(object):
             if selected_waymo_locations is not None and frame.context.stats.location not in selected_waymo_locations:
                 return
 
-            # parse label files
-            self.save_label_and_calib(frame, file_idx, frame_idx)
             # save images
             self.save_image(frame, file_idx, frame_idx)
-
+            # parse label files
+            self.save_label_and_calib(frame, file_idx, frame_idx)
             if self.convert_lidar:
                 # parse point clouds
                 self.save_lidar(frame, file_idx, frame_idx)
@@ -171,6 +173,7 @@ class WaymoToKITTI(object):
                 :param frame_idx: the current frame number
                 :return:
         """
+        self.image_shapes = dict()
         for img in frame.images:
             camera_id = img.name-1
             if  img.name in self.camera_names:
@@ -179,7 +182,10 @@ class WaymoToKITTI(object):
                 if not self.check_file_exists(img_path):
                     img = cv2.imdecode(np.frombuffer(
                         img.image, np.uint8), cv2.IMREAD_COLOR)
+                    self.image_shapes[camera_id+1] = (img.shape[0], img.shape[1])
                     mmcv.imwrite(img, img_path)
+                else:
+                    self.image_shapes[camera_id+1] = img_path
 
     def save_calib(self, frame, file_idx, frame_idx):
         """ parse and save the calibration data
@@ -188,62 +194,16 @@ class WaymoToKITTI(object):
                 :param frame_idx: the current frame number
                 :return:
         """
-        # kitti:
-        #   bbox in reference camera frame (right-down-front)
-        #       image_x_coord = Px * R0_rect * R0_rot * bbox_coord
-        #   lidar points in lidar frame (front-right-up)
-        #       image_x_coord = Px * R0_rect * Tr_velo_to_cam * lidar_coord
-        #   note:   R0_rot is caused by bbox rotation
-        #           Tr_velo_to_cam projects lidar points to cam_0 frame
-        # waymo:
-        #   bbox in vehicle frame, hence, use a virtual reference frame
-        #   since waymo camera uses frame front-left-up, the virtual reference frame (right-down-front) is
-        #   built on a transformed front camera frame, name this transform T_front_cam_to_ref
-        #   and there is no rectified camera frame
-        #       image_x_coord = intrinsics_x * Tr_front_cam_to_cam_x * inv(T_front_cam_to_ref) * R0_rot * bbox_coord(now in ref frame)
-        #   lidar points in vehicle frame
-        #       image_x_coord = intrinsics_x * Tr_front_cam_to_cam_x * inv(T_front_cam_to_ref) * T_front_cam_to_ref * Tr_velo_to_front_cam * lidar_coord
-        # hence, waymo -> kitti:
-        #   set Tr_velo_to_cam = T_front_cam_to_ref * Tr_vehicle_to_front_cam = T_front_cam_to_ref * inv(Tr_fronT_cam_to_velo)
-        #       as vehicle and lidar use the same frame after fusion
-        #   set R0_rect = identity
-        #   set P2 = front_cam_intrinsics * Tr_waymo_to_conv * Tr_front_cam_to_front_cam * inv(T_front_cam_to_ref)
-        #   note: front cam is cam_0 in kitti, whereas has name = 1 in waymo
-        #   note: waymo camera has a front-left-up frame,
-        #       instead of the conventional right-down-front frame
-        #       Tr_waymo_to_conv is used to offset this difference. However, Tr_waymo_to_conv is the same as
-        #       T_front_cam_to_ref, hence,
-        #   set P2 = front_cam_intrinsics
-
         calib_context = ''
 
-        # front-left-up -> right-down-front
-        # T_front_cam_to_ref = np.array([
-        #     [0.0, -1.0, 0.0],
-        #     [-1.0, 0.0, 0.0],
-        #     [0.0, 0.0, 1.0]
-        # ])
-        T_cam_to_ref = np.array([
-            [0.0, -1.0, 0.0],
-            [0.0, 0.0, -1.0],
-            [1.0, 0.0, 0.0]
-        ])
-        # T_ref_to_front_cam = np.array([
-        #     [0.0, 0.0, 1.0],
-        #     [-1.0, 0.0, 0.0],
-        #     [0.0, -1.0, 0.0]
-        # ])
-
-        # print('context\n',frame.context)
-        cam_intrinsics = dict()
-        self.T_cam_to_ref = T_cam_to_ref
-        self.T_velo_to_cams = dict()
+        self.cam_intrinsics = dict()
+        self.cam_extrinsics = dict()
         for camera in frame.context.camera_calibrations:
             # extrinsics
             _T_cam_to_velo = np.array(camera.extrinsic.transform).reshape(4, 4)
             T_velo_to_cam = np.linalg.inv(_T_cam_to_velo)
 
-            self.T_velo_to_cams[camera.name] = T_velo_to_cam.copy()
+            self.cam_extrinsics[camera.name] = T_velo_to_cam.copy()
             # intrinsics
             cam_intrinsic = np.zeros((3, 4))
             cam_intrinsic[0, 0] = camera.intrinsic[0]
@@ -251,27 +211,19 @@ class WaymoToKITTI(object):
             cam_intrinsic[0, 2] = camera.intrinsic[2]
             cam_intrinsic[1, 2] = camera.intrinsic[3]
             cam_intrinsic[2, 2] = 1
-            cam_intrinsics[camera.name] = cam_intrinsic.copy()
+            self.cam_intrinsics[camera.name] = cam_intrinsic.copy()
 
-        # print('front_cam_intrinsic\n', front_cam_intrinsic)
-
-        # self.T_front_cam_to_ref = T_front_cam_to_ref.copy()
-        # self.T_vehicle_to_front_cam = T_vehicle_to_front_cam.copy()
-        # identity_3x4 = np.eye(4)[:3, :]
-        # although waymo has 5 cameras, for compatibility, we produces 4 P
-        for camera_name, P in cam_intrinsics.items():
-            # P = front_cam_intrinsic.reshape(12)
+        for camera_name, P in self.cam_intrinsics.items():
             P = P.reshape(12)
             calib_context += f"P{camera_name}: " + \
                 " ".join(['{}'.format(i) for i in P]) + '\n'
 
-
         calib_context += "R0_rect" + ": " + \
             " ".join(['{}'.format(i)
-                      for i in np.eye(3).astype(np.float32).flatten()]) + '\n'
-        for camera_name, T_velo_to_cam in self.T_velo_to_cams.items():
-            Tr_velo_to_cam = self.cart_to_homo(
-                T_cam_to_ref) @ T_velo_to_cam
+                for i in np.eye(3).astype(np.float32).flatten()]) + '\n'
+
+        for camera_name, T_velo_to_cam in self.cam_extrinsics.items():
+            Tr_velo_to_cam = self.axes_transformation @ T_velo_to_cam
             calib_context += f"Tr_velo_to_cam_{camera_name}" + ": " + \
                 " ".join(['{}'.format(i)for i in Tr_velo_to_cam[:3, :].reshape(12)]) + '\n'
 
@@ -377,9 +329,16 @@ class WaymoToKITTI(object):
                 id_to_bbox[label.id] = bbox
                 id_to_name[label.id] = name - 1
 
+        fp_labels = dict()
+        for name in range(5):
+            name = str(name)
+            fp_labels[name] = open(self.label_save_dir + name + '/' + self.prefix +
+                            str(file_idx).zfill(3) + str(frame_idx).zfill(3) + '.txt', 'a')
+
         # print([i.type for i in frame.laser_labels])
         for name in range(5):
             name = str(name)
+            cam_id = int(name)+1
             for obj in frame.laser_labels:
                 # calculate bounding box
                 id = obj.id
@@ -398,21 +357,12 @@ class WaymoToKITTI(object):
                 if filter_empty_3dboxes and obj.num_lidar_points_in_box < 1:
                     continue
 
-                # TODO: temp fix
-                # if bounding_box == None or name == None:
-                #     name = '2'
                 bounding_box = (0, 0, 0, 0)
                 my_type = self.waymo_to_kitti_class_map[my_type]
-                # length: along the longer axis that is perpendicular to gravity direction
-                # width: along the shorter axis  that is perpendicular to gravity direction
-                # height: along the gravity direction
-                # the same for waymo and kitti
                 height = obj.box.height  # up/down
                 width = obj.box.width  # left/right
                 length = obj.box.length  # front/back
 
-                # waymo: bbox label in lidar/vehicle frame. kitti: bbox label in reference image frame
-                # however, kitti uses bottom center as the box origin, whereas waymo uses the true center
                 x = obj.box.center_x
                 y = obj.box.center_y
                 z = obj.box.center_z - height / 2
@@ -420,22 +370,8 @@ class WaymoToKITTI(object):
                 # project bounding box to the virtual reference frame
                 camera_id = int(name)+1#CAMERA_NAME2ID #[lidar[1:]]
 
-                pt_ref = self.axes_transformation @ self.T_velo_to_cams[camera_id] @ np.array([x, y, z, 1]).reshape((4, 1))
-                x, y, z, _ = pt_ref.flatten().tolist()
-                if z <= 0: continue
-                # import ipdb; ipdb.set_trace()
-                # print('aft', x,y,z)
-                # x, y, z correspond to l, w, h (waymo) -> l, h, w (kitti)
-                # length, width, height = length, height, width
 
-                # front-left-up (waymo) -> right-down-front(kitti)
-                # bbox origin at volumetric center (waymo) -> bottom center (kitti)
-                # x, y, z = -waymo_y, -waymo_z + height / 2, waymo_x
 
-                # rotation: +x around y-axis (kitti) -> +x around y-axis (waymo)
-                #           right-down-front            front-left-up
-                # note: the "rotation_y" is kept as the name of the rotation variable for compatibility
-                # it is, in fact, rotation around positive z
                 rotation_y = -obj.box.heading - np.pi / 2 
                 if name == '1':
                     rotation_y+=np.pi/4
@@ -446,7 +382,15 @@ class WaymoToKITTI(object):
                 elif name == '4':
                     rotation_y-=np.pi/2
 
-                # track id
+                pt_ref = self.axes_transformation @ self.cam_extrinsics[camera_id] @ np.array([x, y, z, 1]).reshape((4, 1))
+
+                x, y, z, _ = pt_ref.flatten().tolist()
+                if z <= 0: continue
+                box_3d_on_image = self.compute_box_3d(length, width, height, x,y,z, rotation_y, self.cam_intrinsics[cam_id])
+                if not kitti_util.is_in_image(box_3d_on_image, self.image_shapes[cam_id]):
+                    continue
+
+
                 track_id = obj.id
                 # not available
                 truncated = 0
@@ -456,7 +400,7 @@ class WaymoToKITTI(object):
                 # contribution is welcome
                 alpha = -10
 
-                # save the labels
+
                 line = my_type + ' {} {} {} {} {} {} {} {} {} {} {} {} {} {}\n'.format(round(truncated, 2),
                                                                                     occluded,
                                                                                     round(
@@ -487,15 +431,17 @@ class WaymoToKITTI(object):
                 else:
                     line_all = line[:-1] + ' ' + name + '\n'
                 # store the label
-                fp_label = open(self.label_save_dir + name + '/' + self.prefix +
-                                str(file_idx).zfill(3) + str(frame_idx).zfill(3) + '.txt', 'a')
-                fp_label.write(line)
-                fp_label.close()
+                fp_labels[name].write(line)
+
                 fp_label_all.write(line_all)
+
+        for fp_label in fp_labels.values():
+            fp_label.close()
 
         fp_label_all.close()
 
         # print(file_idx, frame_idx)
+
 
     def save_pose(self, frame, file_idx, frame_idx):
         """ Save self driving car (SDC)'s own pose
@@ -645,6 +591,32 @@ class WaymoToKITTI(object):
     #         intensity.append(intensity_tensor.numpy()[:, 1])
     #
     #     return intensity
+
+    def compute_box_3d(self, l,w,h,tx,ty,tz, ry, P):
+        """ Takes an object and a projection matrix (P) and projects the 3d
+            bounding box into the image plane.
+            Returns:
+                corners_2d: (8,2) array in left image coord.
+                corners_3d: (8,3) array in in rect camera coord.
+        """
+        R = kitti_util.roty(ry)
+
+        x_corners = [l / 2, l / 2, -l / 2, -l / 2, l / 2, l / 2, -l / 2, -l / 2]
+        y_corners = [0, 0, 0, 0, -h, -h, -h, -h]
+        z_corners = [w / 2, -w / 2, -w / 2, w / 2, w / 2, -w / 2, -w / 2, w / 2]
+
+        corners_3d = np.dot(R, np.vstack([x_corners, y_corners, z_corners]))
+        corners_3d[0, :] = corners_3d[0, :] + tx
+        corners_3d[1, :] = corners_3d[1, :] + ty
+        corners_3d[2, :] = corners_3d[2, :] + tz
+        # if np.any(corners_3d[2, :] < 0.1):
+        #     corners_2d = None
+        #     return corners_2d, np.transpose(corners_3d)
+
+        # # project the 3d bounding box into the image plane
+        corners_2d = kitti_util.project_to_image(np.transpose(corners_3d), P)[0]
+        return corners_2d
+
 
     def cart_to_homo(self, mat):
         ret = np.eye(4)
