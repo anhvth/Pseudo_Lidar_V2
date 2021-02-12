@@ -349,7 +349,9 @@ def roty(t):
     """ Rotation about the y-axis. """
     c = np.cos(t)
     s = np.sin(t)
-    return np.array([[c, 0, s], [0, 1, 0], [-s, 0, c]])
+    return np.array([[c, 0, s], 
+                     [0, 1, 0],
+                     [-s, 0, c]])
 
 
 def rotz(t):
@@ -604,6 +606,19 @@ def project_to_image(pts_3d, P):
     return pts_2d[:, 0:2], pts_3d
 
 
+
+def get_vertices():
+    # vertices = np.empty([2,2,2,2])
+    vertices = []
+    for k in [0, 1]:
+        for l in [0, 1]:
+            for m in [0, 1]:
+                # 3D point in the box space
+                v = np.array([(k-0.5), (l-0.5), (m-0.5), 1.])
+                vertices.append(v)
+    return np.array(v)
+
+
 def compute_box_3d(obj, P):
     """ Takes an object and a projection matrix (P) and projects the 3d
         bounding box into the image plane.
@@ -630,8 +645,6 @@ def compute_box_3d(obj, P):
     corners_3d[0, :] = corners_3d[0, :] + obj.t[0]
     corners_3d[1, :] = corners_3d[1, :] + obj.t[1]
     corners_3d[2, :] = corners_3d[2, :] + obj.t[2]
-    # print 'cornsers_3d: ', corners_3d
-    # only draw 3d bounding box for objs in front of the camera
     if np.any(corners_3d[2, :] < 0.1):
         corners_2d = None
         return corners_2d, np.transpose(corners_3d)

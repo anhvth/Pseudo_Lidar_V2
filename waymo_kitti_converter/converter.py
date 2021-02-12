@@ -394,33 +394,15 @@ class WaymoToKITTI(object):
 
                 if my_type not in selected_waymo_classes:
                     continue
+
+                if filter_empty_3dboxes and obj.num_lidar_points_in_box < 1:
+                    continue
+
                 # TODO: temp fix
                 # if bounding_box == None or name == None:
                 #     name = '2'
                 bounding_box = (0, 0, 0, 0)
-                    # import ipdb; ipdb.set_trace()
-                    # raise ValueError
-                    
-                # if filter_empty_3dboxes and obj.num_lidar_points_in_box < 1:
-                #     continue
-
-                # from waymo_open_dataset.utils.box_utils import compute_num_points_in_box_3d
-                # print('annot:', obj.num_lidar_points_in_box)
-                # num_points_in_gt_waymo = compute_num_points_in_box_3d(
-                #     tf.convert_to_tensor(self.pc.astype(np.float32), dtype=tf.float32),
-                #     tf.convert_to_tensor(np.array([[obj.box.center_x, obj.box.center_y, obj.box.center_z,  obj.box.length,obj.box.width,  obj.box.height,obj.box.heading]]).astype(np.float32), dtype=tf.float32))
-                # print('actual:', num_points_in_gt_waymo.numpy())
-
-                # visualizer
-                # [261   56   24   15   46  254   24  824  146   26    5   13   30   45
-                #  60  184  347  222 1774    2   46]
-
-                # converter
-                # 264, 59, 24, 16, 51, 268, 24, 847, 149, 28, 6, 13, 30, 45, \
-                # 64, 192, 353, 229, 1848, 2, 48
-
                 my_type = self.waymo_to_kitti_class_map[my_type]
-
                 # length: along the longer axis that is perpendicular to gravity direction
                 # width: along the shorter axis  that is perpendicular to gravity direction
                 # height: along the gravity direction
@@ -440,6 +422,8 @@ class WaymoToKITTI(object):
 
                 pt_ref = self.axes_transformation @ self.T_velo_to_cams[camera_id] @ np.array([x, y, z, 1]).reshape((4, 1))
                 x, y, z, _ = pt_ref.flatten().tolist()
+                if z <= 0: continue
+                # import ipdb; ipdb.set_trace()
                 # print('aft', x,y,z)
                 # x, y, z correspond to l, w, h (waymo) -> l, h, w (kitti)
                 # length, width, height = length, height, width
