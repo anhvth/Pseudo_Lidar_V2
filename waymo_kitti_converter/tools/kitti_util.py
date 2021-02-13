@@ -157,8 +157,11 @@ class Calibration(object):
         # Rigid transform from Velodyne coord to reference camera coord
         self.V2C = calibs["Tr_velo_to_cam"] if "Tr_volo_to_cam" in calibs else calibs[f"Tr_velo_to_cam_{camera_name}"]
         # import ipdb; ipdb.set_trace()
+        if len(self.V2C) == 16:
+            self.V2C = np.reshape(self.V2C, [4, 4])
+        else:
+            self.V2C = np.reshape(self.V2C, [3, 4])
 
-        self.V2C = np.reshape(self.V2C, [3, 4])
         self.C2V = inverse_rigid_trans(self.V2C)
         # Rotation from reference camera coord to rect camera coord
         self.R0 = calibs["R0_rect"]
